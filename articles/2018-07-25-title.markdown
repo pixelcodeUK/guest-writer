@@ -124,7 +124,7 @@ That's it! You import the web component you are going to make using JavaScript (
 
 ### Polymer app build script setup
 
-Now that you have all your dependencies setup, let's make a few scripts to make compilation easy, add these lines to your `package.json`.
+Now that you have all your dependencies setup, you will make a few scripts to make compilation easy, add these lines to your `package.json`.
 
 ```js
 "scripts": {
