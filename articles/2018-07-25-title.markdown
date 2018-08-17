@@ -14,15 +14,13 @@ related:
 
 **TL;DR:** In this article, you're going to use web components to create a simple todo list [SPA (Single Page Application)](https://en.wikipedia.org/wiki/Single-page_application). You'll use Auth0 to secure the list, Redux to manage the state of the application, and LitElement to add some syntactic sugar.
 
-If you would like to follow along, the source code for this article is available on [GitHub.com](https://github.com/brunokrebs/polymer-hapijs-auth0).
-
 ## What is Polymer/LitElement?
 
-The Polymer project started in 2012 with a mission to improve the state of web development, and drive the web platform forward. They proposed a new spec that would allow complex web applications to be built easily, and have native API's to create web components that are reusable.
+The [Polymer project](https://www.polymer-project.org) started in 2012 with a mission to improve the state of web development, and drive the web platform forward. They proposed a new spec that would allow complex web applications to be built easily, and have native API's to create web components that are reusable.
 
 ### What are web components?
 
-Web components are a suite of standards that allow you to create reusable custom components on the web. The suite includes:
+[Web components](https://www.webcomponents.org) are a suite of standards that allow you to create reusable custom components on the web. The suite includes:
 
 * Custom elements
 
@@ -42,7 +40,7 @@ One of the fundamental aspects of the new spec was the ability to encapsulate ea
 
 ## What is Redux?
 
-Redux is a state container. It will hold the current state of your app, including all the todo items, the user details, and anything else you need. The state is stored as a JSON object that is immutable. When you need to make a change, you create new object that has all the data from the previous object plus the change being made.
+[Redux](https://redux.js.org) is a state container. It will hold the current state of your app, including all the todo items, the user details, and anything else you need. The state is stored as a JSON object that is immutable. When you need to make a change, you create new object that has all the data from the previous object plus the change being made.
 
 You will subscribe your web components to Redux, in a way that your code will be told every time a change of state occurs so you can update your views.
 
@@ -50,7 +48,7 @@ Redux has three major concepts outlined in the image below:
 
 ![Redux](state.png)
 
-The *store* is the state contained in a JSON object. An *action* tells Redux that an event has happened that will change the state of the system. The *reducer* takes the old state, and the action, and provides a new immutable state. This new state then gets automatically sent to your components. All you need to do is define what actions you need, and how those actions affect the state.
+The *store* is the state contained in a JSON object. An *action* tells Redux that an event has happened that will change the state of the system. The *reducer* takes the old state, and the action, and provides a new immutable state. This new state then gets automatically sent to your components. All you need to do is define what actions you need, and how those actions affect the state. The read more about Redux, see [this article](https://auth0.com/blog/redux-practical-tutorial/).
 
 ## Basic structure of the Polymer app
 
@@ -60,35 +58,34 @@ Your SPA will contain some web components, some actions and reducers (for Redux)
 * `src / components`
 * `src / reducers`
 
+Locate the folder you want to store your project, then run the following command:
+
+```sh
+mkdir -p src/actions src/components src/reducers
+```
+
 To keep things simple, you'll put all of your actions and reducers in one file (rather than separate them out).
 
-To build and serve your project, you'll use Webpack and the Polymer CLI. Web components are implemented directly into the browser, so you can run them without compilation. The only problem is you will import the LitElement code by package name, and browsers do not currently know how to find code referenced that way. Webpack will take care of that for you.
+To build and serve your project, you'll use [Webpack](https://webpack.js.org) and the [Polymer CLI](https://github.com/Polymer/tools/tree/master/packages/cli). Web components are implemented directly into the browser, so you can run them without compilation. The only problem is you will import the LitElement code by package name, and browsers do not currently know how to find code referenced that way. Webpack will take care of that for you.
 
 ### Polymer/LitElemenent dependencies
 
-Let's get started. Run the commands below to get the project started:
+Let's get started. Run the commands below from inside the root of your project folder:
 
 ```sh
 #Fill in the details of your repo
 npm init
 #Install dependencies
-npm install --save @polymer/lit-element
-npm install --save auth0-js
-npm install --save pwa-helpers
-npm install --save redux
-npm install --save redux-thunk
+npm install --save @polymer/lit-element auth0-js pwa-helpers redux redux-thunk
 #Install dev dependencies
-npm install --save-dev polymer-cli
-npm install --save-dev webpack
-npm install --save-dev webpack-cli
-
+npm install --save-dev polymer-cli webpack webpack-cli
 ```
 
 ### Setting up Webpack to compile your code
 
 As your app is a SPA, it will have a single point of entry. You will be talking to an API, so you need to make the API address available to your code. Create a file called `webpack.dev.conf.js` and put the following code inside:
 
-{% highlight js %}
+```js
 <!-- webpack.dev.conf.js -->
 const webpack = require('webpack');
 
@@ -105,13 +102,13 @@ module.exports = {
   ]
 };
 
-{% endhighlight %}
+```
 
-You will compress your code into `dist/main.js`. You'll inject a constant called `API_URL` during that process so anywhere Webpack sees this constant it will replace the value for you.
+With this configuration, Webpack will compress your code into `dist/main.js`. A constant called `API_URL` will be injected by Webpack during that process so anywhere Webpack sees this constant it will replace the value for you.
 
 ### Setting your LitElement start page
 
-The greatest asset of web components is encapsulation. Each element knows how to handle itself, which makes developing for the web easier. Our HTML file below demonstrates this:
+The greatest asset of web components is encapsulation. Each element knows how to handle itself, which makes developing for the web easier. Create a file called `index.html` in the project root with the following contents:
 
 {% highlight html %}
 <!-- index.html -->
@@ -127,35 +124,27 @@ That's it! You import the web component you are going to make using JavaScript (
 
 ### Polymer app build script setup
 
-Now you have all your dependencies setup, let's make a few scripts to make compilation easy, add these lines to your `package.json`.
+Now that you have all your dependencies setup, let's make a few scripts to make compilation easy, add these lines to your `package.json`.
 
-{% highlight js %}
+```js
 "scripts": {
   "webpack_dev": "webpack --config webpack.dev.conf.js",
   "serve": "polymer serve",
   "start": "npm run-script webpack_dev && npm run-script serve"
 },
-{% endhighlight %}
+```
 
 You have defined 3 scripts above. `webpack_dev` will combine all your code, `serve` will serve your code to the browser for testing and `start` will compile and run your code all in one.
 
-To call these scripts you will use:
-
-```sh
-npm run-script start
-```
 
 ### Auth0 setup
 
 You are going to secure your app using Auth0. Follow [their guide](https://auth0.com/docs/applications/spa) to register an App and get credentials you will need to communicate with Auth0. Make a note of the `domain`, `audience` and `clientId`.
 
-### Checkpoint - your Polymer setup
-
-Before you dive into making your first component, let's check your current setup. So far you have defined an `index.html` file that will load your app. You have setup Webpack to build your app, and setup Auth0 for authentication.
 
 ### Hapi Backend
 
-In the second part of this article you will create a backend to process and store your todos. Run the backend code as outlined [in the project](https://github.com/brunokrebs/polymer-hapijs-auth0) to store your todos.
+In the first part of this article you created a backend to process and store your todos. Run the [backend code](https://github.com/brunokrebs/polymer-hapijs-auth0) so your components can connect to the API.
 
 
 ## Make your first web component with LitElement
@@ -166,9 +155,9 @@ The app you will make is a todo list that lets users add and delete items. You w
 
 `my-app` will contain all of your app. You could share the component with others, and they could implement an entire todo list with one line of code! `my-list` will take data from your Redux store, and display all the items in the todo list array. Redux will inform the component when the array changes. `auth0-login` will keep your Redux store informed of the state of the user authentication.
 
-Let's start by making `my-list`. As discussed it will take an array as input, and display the items. You need a way to delete each element, and you'll also add a textbox at the bottom to allow the user to add new todo's.
+Let's start by making `my-list`. Create a file called `my-list.js` inside the `components` directory. As discussed it will take an array as input, and display the items. You need a way to delete each element, and you'll also add a textbox at the bottom to allow the user to add new todo's.
 
-{% highlight js %}
+```js
 <!-- src/components/my-list.js -->
 import {LitElement, html} from '@polymer/lit-element';
 
@@ -187,13 +176,13 @@ class MyList extends LitElement {
 }
 
 window.customElements.define('my-list', MyList);
-{% endhighlight %}
+```
 
 The code above is the boilerplate needed for your element. Give it a name `my-list` and give it one property `items` of type `Array`. You import and extend LitElement that will give you some nice features (notice how you import it by package name). You declare properties (attributes on your custom HTML element) and give them appropriate types.
 
 Let's finish your `_render` function:
 
-{% highlight js %}
+```js
 _render(properties) {
 return html`
   <style>
@@ -221,7 +210,7 @@ return html`
 }
 `;
 
-{% endhighlight %}
+```
 
 The render function takes one argument `properties`, which is an object containing all the properties you defined earlier (`items`).
 
@@ -231,49 +220,53 @@ The first interesting section is the unordered list you make. As you are using t
 
 Let's extend your web component object with these new handers:
 
-{% highlight js %}
-_addEntry() {
-  this.dispatchEvent(new CustomEvent('add-entry', {detail: this.shadowRoot.querySelector('#todo').value}));
-}
+```js
+// ... import statements ...
+class MyList extends LitElement {
+  // ... properties and _render definitions ...
 
-_deleteEntry(index) {
-  this.dispatchEvent(new CustomEvent('delete-entry', {detail: index}));
+  _addEntry() {
+    this.dispatchEvent(new CustomEvent('add-entry', {detail: this.shadowRoot.querySelector('#todo').value}));
+  }
+  
+  _deleteEntry(index) {
+    this.dispatchEvent(new CustomEvent('delete-entry', {detail: index}));
+  }
 }
-{% endhighlight %}
+```
 
 In this code you use native custom events to send two different events. One for deleting an item (along with its index), and another to create an item. Notice how you got the value of the textbox: `this.shadowRoot.querySelector`. You are not in Kansas anymore, you are no longer dealing with the `document` directly, all of your code is placed in a shadow DOM, encapsulated from everything else (another way of thinking of the Shadow DOM is like a mini document created specifically for your element).
 
 For UX bonus points, you will cause a focus event on the textbox onload:
 
-{% highlight js %}
-_didRender(props, changedProps, prevProps) {
-  super._didRender(props, changedProps, prevProps);
+```js
+// ... import statements ...
+class MyList extends LitElement {
+  // ... properties, _render, _addEntry and _deleteEntry definitions ...
 
-  this.shadowRoot.querySelector('#todo').focus();
+  _didRender(props, changedProps, prevProps) {
+    super._didRender(props, changedProps, prevProps);
 
+    this.shadowRoot.querySelector('#todo').focus();
+  }
 }
-{% endhighlight %}
+```
 
 What's going on here? You need to wait for your web component to be initialised before you can cause focus. [LitElement](https://github.com/Polymer/lit-element) describes the lifecycle of the component from load to launch. You intercept the function called after the element is rendered on screen and then focus the element.
 
 The value you return from `_render` is a [tagged template](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals). You import the function `html` from LitElement, this function will take your template and transform it for us.
 
-
-### Checkpoint - your first web component with LitElement
-
-So far you have made one component `<my-list>`. It takes one input `items` that you display in a list.
-
 ## Make an Auth0 web component with LitElement
 
 What you are going to do next is an interesting way to use web components. You are going to use the JS library made by Auth0 to keep track of the user authentication state. However, you will take advantage of the encapsulation provided by web components and make an element whose sole job is tracking authentication information. When you are finished, the element could be reused anywhere, by anyone, to add Auth0 authentication in one line!!
 
-The full code is below, you'll cover the interesting parts, as the rest is just a wrapper around the Auth0 JS library.
+The full code is below, you'll cover the interesting parts, as the rest is just a wrapper around the Auth0 JS library. Create a file called `auth0-login.js` in the `components` directory.
 
-{% highlight js %}
+```js
 <!-- src/components/auth0-login.js -->
 import {LitElement, html} from '@polymer/lit-element';
 
-let auth0 = require('../../node_modules/auth0-js/build/auth0.js');
+const auth0 = require('../../node_modules/auth0-js/build/auth0.js');
 
 class Auth0Login extends LitElement {
   static get properties() {
@@ -363,7 +356,7 @@ class Auth0Login extends LitElement {
 }
 
 window.customElements.define('auth0-login', Auth0Login);
-{% endhighlight %}
+```
 
 Your `_render` function has a simple login and logout button, you use the `user` property to detect authentication information to toggle the buttons.
 
@@ -377,28 +370,24 @@ This web component accepts the Auth0 configuration as input, so it can be reused
 
 What's particularly interesting about this component is that it doesn't necessarily need a view. Like the `<script>` tag you could make an element that has no presentation of its own, purely dealing with data modelling. This leads to interesting possibilities for web components be using to define data as well as presentation.
 
-## Checkpoint - your Auth0 integration with LitElement
-
-You now have 2 components, one [for login](https://github.com/brunokrebs/polymer-hapijs-auth0/blob/master/website/src/components/auth0-login.js) and one to display [the list](https://github.com/brunokrebs/polymer-hapijs-auth0/blob/master/website/src/components/my-list.js). All you need to do now is wire them together...
-
 ## Creating your state strategy with Redux
 
-Before you make the final web component for your app, lets make the state for the app. Lets start with some boilerplate:
+Before you make the final web component for your app, lets make the state for the app. Place this boilerplate into the file `store.js` in the `src` directory.:
 
-{% highlight js %}
+```js
 <!-- src/store.js -->
 import {createStore,applyMiddleware} from 'redux';
 import thunk from 'redux-thunk';
 import {reducer} from './reducers/app.js'
 
 export const store = createStore(reducer, applyMiddleware(thunk));
-{% endhighlight %}
+```
 
 This code sets up your global data store. You initialise Redux, and apply Thunk middleware (more on this later).
 
-If you remember from the introduction above, actions tell Redux when something happens that will change the state of the app. An action is a function that returns a JSON object that describes the action and any data associated with it  (Thunk allows you to access Redux so you do not need to return immediately, but can await a backend response).
+If you remember from the introduction above, actions tell Redux when something happens that will change the state of the app. An action is a function that returns a JSON object that describes the action and any data associated with it  (Thunk allows you to access Redux so you do not need to return immediately, but can await a backend response). Create a file called `app.js` in the `actions` directory and add the following code:
 
-{% highlight js %}
+```js
 <!-- src/actions/app.js -->
 export const ADD_ITEM_START = 'ADD_ITEM_START';
 export const ADD_ITEM_FINISH = 'ADD_ITEM_FINISH';
@@ -509,7 +498,7 @@ export const getInitialData = () => (dispatch) => {
     });
   });
 };
-{% endhighlight %}
+```
 
 Let's look at the `addItem` action.
 
@@ -521,13 +510,13 @@ The action itself is a function which accepts an `item` and then returns a `func
 
 The other actions in the repo follow the same pattern. They tell Redux something has happened, and send any data that is needed.
 
-##The Redux Reducer
+## The Redux Reducer
 
 A reducer is a fancy word for code that gets the old state of the system, and makes a change.
 
-You will go through the reducer relating to adding an item.
+Create a file called `app.js` in the `reducers` folder and add the following code:
 
-{% highlight js %}
+```js
 <!-- src/reducers/app.js -->
 import {
   ADD_ITEM_START,
@@ -605,7 +594,7 @@ export const reducer = (state, action) => {
   }
 };
 
-{% endhighlight %}
+```
 
 As you can see from the definition, a reducer takes the current state of the system, and one action, and has to return the new state of the system.
 
@@ -627,9 +616,9 @@ The data model for your todo item is as follows:
 
 Your final element will talk to Redux and keep the UI informed of the state.
 
-The creation of this element is slightly different:
+The creation of this element is slightly different, make a file called `my-app.js` and place it in the `components` folder:
 
-{% highlight js %}
+```js
 <!-- src/components/my-app.js -->
 import {LitElement, html} from '@polymer/lit-element';
 import {connect} from 'pwa-helpers/connect-mixin.js';
@@ -708,11 +697,11 @@ class MyApp extends connect(store)(LitElement) {
 
 window.customElements.define('my-app', MyApp);
 
-{% endhighlight %}
+```
 
 Our final component uses both LitElement and `connect` which binds Redux to your app. All the state change propagation is automatically handled for us.
 
-{% highlight js %}
+```js
 static get properties() {
   return {
     _count: Number,
@@ -726,17 +715,17 @@ _stateChanged(state) {
     this._signedIn = state.user != null;
     this._items = state.items;
   }
-{% endhighlight %}
+```
 
 Your component has properties, but they are all private (marked by a leading underscore). They get their values from Redux in the `_stateChanged` function rather than using attributes (e.g. `<my-app _count="1">`);
 
 In your previous elements, you used custom events to *bubble* data to higher elements. You now need to catch these events and do something with them. You made actions earlier that cause Redux to change state, so you need to pass the data from the event to the Redux action:
 
-{% highlight js %}
+```js
 _addEntry(e) {
   store.dispatch(addItem(e.detail));
 }
-{% endhighlight %}
+```
 
 This function catches the `addEntry` event, and uses the `addItem` action you made earlier to tell Redux what to do using the `dispatch` method.
 
@@ -747,36 +736,16 @@ You have made 3 custom web components, wired them to Redux and authenticated the
 To launch the project run:
 
 ```sh
-npm run-script start
+npm start
 ```
 And go to the web address provided.
 
-## Conclusion and backend preparation
+## Conclusion
 
 What have you learned in this article? You have made custom web components using nothing but vanilla JS and some helper functions provided by Polymer and LitElement. When browsers know how to use package names to import code, you could run your vanilla code with no further config! You used vanilla custom events to pass data around the hierarchy, and vanilla JS to describe your templates.
 
 This is in contrast to React with the VDOM, you do not need any artificial constructs, the browser does all the heavy lifting!
 
 ## Thinking further
-
-You will create your backend in the next article, to test your code now, modify the actions so that they do not call the API, but instead they always succeed:
-
-{% highlight js %}
-export const addItem = (item) => (dispatch) => {
-  const jwt = localStorage.getItem('access_token');
-  if (!jwt) return;
-
-  dispatch({
-    type: ADD_ITEM_START,
-    item,
-  });
-
-  dispatch({
-    type: ADD_ITEM_FINISH,
-    item,
-  });
-
-};
-{% endhighlight %}
 
 One of the advantages of web components is that they are sharable, but you have baked in an assumption about your data system (calling preset API endpoints). Can you think of a way to remove this dependency to make these components truly reusable (hint: custom events)?
