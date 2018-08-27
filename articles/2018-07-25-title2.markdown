@@ -1,0 +1,480 @@
+---
+layout: post
+title: "Developing modern APIs with Node, HAPI JS and Redis"
+description: "Use Node JS and Auth0 to make performant, secure API endpoints."
+date: "2018-07-25 08:30"
+author:
+  name: "Mark Wheeler"
+  url: "@pixelcodeuk"
+  mail: ""
+  avatar: "https://twitter.com/@pixelcodeuk/profile_image?size=original"
+related:
+- 2017-11-15-an-example-of-all-possible-elements
+---
+
+**TL;DR:** This is part 1 of a 2 part article creating a full stack todo list JavaScript app. In part 1 you're going to make the API with [Node JS](https://nodejs.org/en/) and [HAPI](https://hapijs.com), and store and delete the items with [Redis](https://redis.io), finally securing the endpoints with [Auth0](https://auth0.com). In part 2 you're going to use [web components](https://www.webcomponents.org) with [LitElement](https://github.com/Polymer/lit-element) to create the frontend.
+
+
+## What is Redis?
+
+[Redis](https://redis.io) is an open source in-memory key-value data store. As it is in-memory, accessing data from it is lightning fast, making it perfect for your todo list.
+
+## What is HAPI JS?
+
+[HAPI](https://hapijs.com) is a framework for creating APIs (similar to [Express](https://expressjs.com).) What is nice about HAPI is the *coding by configuration* architecture, splitting the common aspects of HTTP from the handler.
+
+**In this article you are going to use HAPI 17. This has breaking changes from version 16.**
+
+## What is Docker?
+
+To keep your machine clean, you are not going to install Redis globally. Instead you are going to run Redis inside [Docker](https://www.docker.com). Docker runs containers that hold programs that operate completely isolated from each other. Containers can be shared and run anywhere. you are going to download and use a pre-built Redis container that allows us to use Redis fresh out of the box, with no setup.
+
+## Basic structure of the HAPI API
+
+Your API will contain the main server setup, and individual files for each route you will need to define. You will create a folder structure as follows:
+
+* `src / `
+* `src / routes`
+
+Locate the folder you want to store your project in, then run the following command:
+
+```sh
+mkdir -p src/routes
+```
+
+To keep things simple, you'll put all you're API routes in one folder.
+
+### Installing dependencies
+
+To get started, run the commands below from inside the root of your project folder:
+
+```sh
+#Fill in the details of your repo
+npm init
+#Install dependencies
+npm install --save boom good good-console good-squeeze hapi hapi-auth-jwt2 hapi-require-https inert joi jwks-rsa lout node-env-file redis uuid vision
+```
+
+Add the following to the `scripts` section of your `package.json` file:
+
+```js
+"scripts": {
+
+    "start": "node index.js",
+
+  },
+```
+
+### Setting up Docker
+
+Install Docker from [their website](https://www.docker.com/products/docker-desktop). To test the installation, run these commands:
+
+```sh
+docker --version
+docker-compose --version
+```
+
+Docker compose allows you to define and run your containers. Create a file called `docker-compose.yml` in the root directory and add the following:
+
+```yml
+version: '3'
+
+services:
+  redis:
+    image: "redis:alpine"
+    ports:
+    - "6379:6379"
+```
+
+This [YAML](http://yaml.org) file downloads and runs a Redis container, and [maps](https://docs.docker.com/compose/compose-file/#ports) port `6379` inside the container to port `6379` on your local machine.
+
+To start Redis run the following command inside the main directory:
+
+```sh
+docker-compose up
+```
+
+## Creating an Auth0 backend project
+
+To secure your backend you will need to create an Auth0 API project, details on how to do this [are here](https://auth0.com/docs/apis).
+
+## Creating an environment file
+
+As you will have configuration for your Auth0 account, you will keep it in a separate file so you can easily switch between a production and testing environment. Create a file called `.env` in your project root and put the following contents in:
+
+```sh
+AUTH0_AUDIENCE=http://localhost:3000
+AUTH0_DOMAIN=myapp.eu.auth0.com
+HOST=localhost
+PORT=3000
+REDIS_HOST=localhost
+REDIS_PORT=6379
+SSL=false
+```
+
+Replace `AUTH0_DOMAIN` with the domain from your Auth0 project. The other configuration variables will work in your local environment.
+
+### Creating the project index file
+
+Create a file called `index.js` in the root of the project and add the following:
+
+```js
+require('node-env-file')(__dirname + '/.env');
+
+const redis = require('redis');
+const createServer = require('./src/server.js');
+const {promisify} = require('util');
+const start = async () => {
+
+  const server = await createServer(
+    {
+      port: process.env.PORT,
+      host: process.env.HOST,
+    },
+    {
+      enableSSL: process.env.SSL === 'true',
+    }
+  );
+
+  const redisClient = redis.createClient(
+    {
+      host: process.env.REDIS_HOST,
+      port: process.env.REDIS_PORT,
+    }
+  );
+
+  redisClient.lpushAsync = promisify(redisClient.lpush).bind(redisClient);
+  redisClient.lrangeAsync = promisify(redisClient.lrange).bind(redisClient);
+  redisClient.llenAsync = promisify(redisClient.llen).bind(redisClient);
+  redisClient.lremAsync = promisify(redisClient.lrem).bind(redisClient);
+  redisClient.lsetAsync = promisify(redisClient.lset).bind(redisClient);
+
+  redisClient.on("error", function (err) {
+    console.error("Redis rrror " + err);
+  });
+
+  server.app.redis = redisClient;
+
+  await server.start();
+
+  console.log(`Server running at: ${server.info.uri}`);
+  console.log(`Server docs running at: ${server.info.uri}/docs`);
+};
+
+process.on('unhandledRejection', (err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+start();
+```
+
+Your start file will load in the environment variables, create and run the server and create and bind Redis.
+
+You are using a Node JS [library](https://www.npmjs.com/package/redis) for talking to Redis but it does not support promises natively, you use `promisify` to create some new methods that return promises. The Redis object is bound to `server.app.redis` so you have access to it in the routes to store and retrieve data.
+
+The environment variables are loaded into `process.env` and are passed to the server and Redis client.
+
+
+### Creating the HAPI server
+
+Your server code will create the HAPI server, add some plugins to give you some extra features and secure the endpoints using your Auth0 project.
+
+Add the following code into a file `src/server.js`:
+
+```js
+const Hapi = require('hapi');
+const jwksRsa = require('jwks-rsa');
+
+const validateFunc = async (decoded) => {
+  return {
+    isValid: true,
+    credentials: decoded,
+  };
+};
+
+module.exports = async (serverOptions, options) => {
+  const server = Hapi.server(
+    Object.assign({
+      port: 3001,
+      host: 'localhost',
+      routes: {
+        cors: {
+          origin: ['*'],
+        },
+      },
+    }, serverOptions),
+  );
+
+  // Redirect to SSL
+  if (options.enableSSL) {
+    console.log('Setting SSL');
+    await server.register({plugin: require('hapi-require-https')});
+  } else {
+    console.log('Not setting SSL');
+  }
+
+  await server.register([
+    require('vision'),
+    require('inert'),
+    {
+      plugin: require('lout'),
+      options: {
+        endpoint: '/docs',
+      },
+    },
+    {
+      plugin: require('good'),
+      options: {
+        ops: {
+          interval: 1000,
+        },
+        reporters: {
+          consoleReporter: [
+            {
+              module: 'good-squeeze',
+              name: 'Squeeze',
+              args: [{response: '*'}],
+            },
+            {
+              module: 'good-console',
+            },
+            'stdout',
+          ],
+        },
+      },
+    },
+  ]);
+
+  await server.register(require('hapi-auth-jwt2'));
+
+  server.auth.strategy('jwt', 'jwt', {
+    complete: true,
+    key: jwksRsa.hapiJwt2KeyAsync({
+      cache: true,
+      rateLimit: true,
+      jwksRequestsPerMinute: 5,
+      jwksUri: `https://${process.env.AUTH0_DOMAIN}/.well-known/jwks.json`,
+    }),
+    verifyOptions: {
+      audience: process.env.AUTH0_AUDIENCE,
+      issuer: `https://${process.env.AUTH0_DOMAIN}/`,
+      algorithms: ['RS256'],
+    },
+    validate: validateFunc,
+  });
+
+  server.auth.default('jwt');
+
+  server.route(require('./routes.js'));
+
+  return server;
+};
+```
+
+The main export from this code is a function to create and return a valid HAPI server. You start by accepting arguments from the `index.js` file and creating the server. You provide defaults and use `Object.assign` to overwrite the defaults with your provided ones.
+
+You enable SSL optionally to make local testing easier by checking for the `enableSSL` option (passed in from the environment variable).
+
+Next, you use plugins to enhance HAPI:
+
+* `lout` automatically produces documentation for all your routes (`vision` and `inert` are required by `lout`)
+* `good` logs out activity from your server
+
+
+Finally you secure your API (all of the config is inside the `.env` file). You use [JWT](https://jwt.io) tokens to authenticate users, and make this the default auth method with `server.auth.default('jwt')`.
+
+The function `validateFunc` is given a users credentials and you return an object telling HAPI whether they have access to the current resource. In this simple example you allow all users access if they have a valid token.
+
+Next you will define the routes for your API next `server.route(require('./routes.js'))`;
+
+
+## Defining HAPI routes
+
+In the `server.js` file you called `server.route` which accepts an array of routes for your server. To make the code more readable you will put each route in a different file. Create a file called `src/routes.js` and copy the following into it:
+
+```js
+module.exports = [
+
+  './routes/todo_get.js',
+  './routes/todo_post.js',
+  './routes/todo_delete.js',
+
+].map((elem) => require(elem));
+```
+This code maps over each filename and returns an array of imported routes.
+
+### Posting a new item
+
+For your first route, make a file called `src/routes/todo_post.js` with the following contents:
+
+```js
+const Joi = require('joi');
+const Boom = require('boom');
+
+module.exports = {
+    method: 'POST',
+    path: '/todo',
+    options: {
+        auth : 'jwt',
+        validate: {
+          payload: {
+            item: Joi.string().required().notes('Text to store in list')
+          },
+        },
+        description: 'Add item',
+        notes: 'Add an item to the list',
+        tags: ['api'],
+    },
+    handler: async (request, h) => {
+      let {sub: redispath} = request.auth.credentials;
+      let {item: redisvalue} = request.payload;
+      let {redis} = request.server.app;
+
+      try {
+
+        let count = await redis.lpushAsync(redispath,redisvalue);
+
+        return h.response({
+          count
+        }).code(201);
+
+      } catch (e) {
+        return Boom.badImplementation(e);
+      }
+
+    }
+}
+```
+
+The export from this file is a JSON object that represents a route for HAPI. The `method` and `path` properties tell HAPI what HTTP method and route is required to call the `handler` code. In the options you specify `jwt` as the authentication required to access this route. The `description`, `notes`, and `tags` document the route for others using it.
+
+The `validate` object is extremely useful curtesy of the `JOI` library. This allows you specify what inputs are required for the route, and if not met HAPI will automatically throw an error for you. All that is required for this route is an item that is a string (again you can add `notes` to document the route).
+
+Finally the `handler` runs your route and returns a value to HAPI. You use the JWT subject as the key for the Redis key value pair, and the value is the string sent from to you from the client. You use the new promisified Redis functions to add the item to the end of the array in Redis and you return the number of items in the array (with a 201 response code).
+
+If anything goes wrong you send a HTTP error code back using the `Boom` library.
+
+### Deleting an item
+
+To delete an item create a file called `src/routes/todo_delete.js` with the following contents:
+
+```js
+const Joi = require('joi');
+const Boom = require('boom');
+
+module.exports = {
+    method: 'DELETE',
+    path: '/todo',
+    options: {
+        auth : 'jwt',
+        validate: {
+          payload: {
+            index: Joi.number().min(0).required().notes('Index to delete'),
+          },
+        },
+        description: 'Delete item',
+        notes: 'Delete an item from the todo list',
+        tags: ['api'],
+    },
+    handler: async (request, h) => {
+      let {sub: redispath}  = request.auth.credentials;
+      let {index: redisindex} = request.payload;
+      let {redis} = request.server.app;
+
+      try {
+
+        await redis.lsetAsync(redispath, redisindex,'__DELETE__');
+        await redis.lremAsync(redispath, 1,         '__DELETE__');
+
+        return h.response({}).code(200);
+
+      } catch (e) {
+        return Boom.badImplementation(e);
+      }
+
+    }
+}
+```
+
+The route is very similar to the `POST` route, you define it as a HTTP `DELETE` route with a required `index` parameter to delete from Redis. To delete an item from Redis by index, you first overwrite the value of that entry, and then delete entries with that new value.
+
+### What is Hypertext Application Language (HAL)?
+
+When you define your final route for retrieving the todo items you will borrow some features from the [HAL specification](http://stateless.co/hal_specification.html). This spec is designed to make it easy to traverse APIs without having to guess endpoints.
+
+For your case you will page the results when retrieving items, so you will include a link to the next page of results in the response so the client does not need to generate it themselves.
+
+
+### Getting all items
+
+Finally create a file called `src/routes/todo_get.js` with the following contents:
+
+```js
+const Joi = require('joi');
+const Boom = require('boom');
+
+module.exports = {
+    method: 'GET',
+    path: '/todo',
+    options: {
+        auth : 'jwt',
+        validate: {
+          query: {
+            start: Joi.number().min(0).default(0).notes('Start index of results inclusive'),
+            results: Joi.number().min(1).max(100).default(10).notes('Number of results to return'),
+          },
+        },
+        description: 'Get items',
+        notes: 'Get items from todo list paged',
+        tags: ['api'],
+    },
+    handler: async (request, h) => {
+      let {redis} = request.server.app;
+      let {sub: redispath} = request.auth.credentials;
+      let {start, results} = request.query;
+
+      try {
+
+        let value   = await redis.lrangeAsync(redispath, start, start + (results - 1));
+        let count   = await redis.llenAsync(redispath);
+
+        if(!value) value = [];
+
+        return h.response({
+          nextlink : `${request.url.pathname}?start=${start+results}&results=${results}`,
+          value,
+          count
+        });
+
+      } catch (e) {
+        return Boom.badImplementation(e);
+      }
+
+    }
+}
+```
+
+This route is a `GET` HTTP route, with two optional query string parameters (with default values set) these allow the client to specify the start index and the number of results they need.
+
+You get the results from Redis and also the total number of results (so the client can display this to the user). In the response you add a `nextlink` property with the API url to call for the next set of results.
+
+
+## Serving the final API
+
+
+To launch the project run:
+
+```sh
+npm start
+```
+
+## Viewing the docs
+
+In the routes you defined you added documentation to help other developers use your API. To view this documentation go to this url: `localhost:3000/docs` (assuming you left the environment variables as the defaults).
+
+## Conclusion and part 2
+
+What have you learned in this article? You have made a complete API for adding, removing and retrieving todo list items using HAPI JS and Redis. You have secured the API using JWT tokens and Auth0 and automatically produced documentation for your code. Finally you made your API more developer friendly by adding a HAL link to make retrieving paged results easier.
+
+In the final part of this 2 part article, you will create a frontend for the todo list using web components and LitElement.
